@@ -1,3 +1,4 @@
 streamlit
 requests
 gtts==2.2.4
+pillow

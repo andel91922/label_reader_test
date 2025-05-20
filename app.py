@@ -3,10 +3,10 @@ import requests
 import base64
 import mimetypes
 from gtts import gTTS
+from PIL import Image
 import tempfile
-import os
 
-# 🗝️ 載入 Gemini API 金鑰（從 secrets）
+# 🗝️ 讀取 Gemini API 金鑰
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 st.set_page_config(page_title="長者友善標籤小幫手", layout="centered")
@@ -15,12 +15,16 @@ st.write("上傳商品標籤圖片，我們會幫你解讀成分內容，並提�
 uploaded_file = st.file_uploader("請上傳商品標籤圖片（jpg 或 png）", type=["jpg", "png"])
 
 if uploaded_file:
-    # 🧊 暫存圖片檔
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
-        temp_file.write(uploaded_file.read())
+    # 🧊 讀取並轉換圖片為 JPEG（若為 PNG）
+    image = Image.open(uploaded_file)
+    if image.format == "PNG":
+        image = image.convert("RGB")  # 移除透明背景
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+        image.save(temp_file.name, format="JPEG")
         image_path = temp_file.name
 
-    # 🧠 轉成 base64 並偵測圖片 MIME 類型
+    # 📦 讀取轉換後的圖片並編碼
     mime_type, _ = mimetypes.guess_type(image_path)
     with open(image_path, "rb") as img_file:
         img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
@@ -46,7 +50,7 @@ if uploaded_file:
                     {"text": prompt_text},
                     {
                         "inlineData": {
-                            "mimeType": mime_type,
+                            "mimeType": "image/jpeg",
                             "data": img_base64
                         }
                     }
@@ -55,7 +59,7 @@ if uploaded_file:
         ]
     }
 
-    # 📡 發送 API 請求
+    # 📡 發送請求
     with st.spinner("AI 正在閱讀標籤中，請稍候..."):
         response = requests.post(url, json=payload)
 
@@ -65,7 +69,7 @@ if uploaded_file:
             st.subheader("📝 成分說明")
             st.write(text)
 
-            # 🎧 語音合成
+            # 🎧 產生語音
             tts = gTTS(text, lang='zh-TW')
             temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
             tts.save(temp_audio.name)
@@ -76,4 +80,4 @@ if uploaded_file:
         except Exception as e:
             st.error(f"✅ 回傳成功但處理失敗：{e}")
     else:
-        st.error(f"❌ 發送請求失敗，錯誤碼：{response.status_code}\n內容：{response.text}")
+        st.error(f"❌ 請求失敗：{response.status_code}\n{response.text}")
